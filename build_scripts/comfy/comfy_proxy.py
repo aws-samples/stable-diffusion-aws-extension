@@ -100,6 +100,8 @@ if is_on_ec2:
 
     headers = {"x-api-key": api_token, "Content-Type": "application/json", "username": "api"}
 
+    global_thread_pool = concurrent.futures.ThreadPoolExecutor()
+
 
     def send_msg_to_all_sockets(event: str, msg: dict):
         sockets = server.PromptServer.instance.sockets
@@ -530,11 +532,13 @@ if is_on_ec2:
             prepare_version = PREPARE_ID if PREPARE_MODE == 'additional' else timestamp
             need_prepare = True
             need_reboot = False
-            # logger.info(f" sync custom nodes files")
-            # s5cmd_syn_node_command = f's5cmd --log=error sync --delete=true --exclude="*comfy_local_proxy.py" {DIR2}/ "s3://{bucket_name}/comfy/{comfy_endpoint}/{timestamp}/custom_nodes/"'
-            # logger.info(f"sync custom_nodes files start {s5cmd_syn_node_command}")
-            # os.system(s5cmd_syn_node_command)
-            # compress_and_upload(comfy_endpoint, f"{DIR2}", prepare_version)
+            if prepare_type in ['default', 'nodes']:
+                logger.info(f" sync custom nodes files")
+                # s5cmd_syn_node_command = f's5cmd --log=error sync --delete=true --exclude="*comfy_local_proxy.py" {DIR2}/ "s3://{bucket_name}/comfy/{comfy_endpoint}/{timestamp}/custom_nodes/"'
+                s5cmd_syn_node_command = f'aws s3 sync --delete --exclude="*comfy_local_proxy.py" {DIR2}/ "s3://{bucket_name}/comfy/{comfy_endpoint}/{timestamp}/custom_nodes/"'
+                logger.info(f"sync custom_nodes files start {s5cmd_syn_node_command}")
+                os.system(s5cmd_syn_node_command)
+                compress_and_upload(comfy_endpoint, f"{DIR2}", prepare_version)
             if prepare_type in ['default', 'inputs']:
                 logger.info(f" sync input files")
                 # s5cmd_syn_input_command = f's5cmd --log=error sync --delete=true {DIR3}/ "s3://{bucket_name}/comfy/{comfy_endpoint}/{prepare_version}/input/"'
@@ -926,8 +930,9 @@ if is_on_ec2:
             prepare_type = json_data['prepare_type'] if json_data and 'prepare_type' in json_data else 'inputs'
             workflow_name = json_data['workflow_name'] if json_data and 'workflow_name' in json_data else os.getenv('WORKFLOW_NAME')
             comfy_endpoint = get_endpoint_name_by_workflow_name(workflow_name)
-            thread = threading.Thread(target=sync_default_files, args=(comfy_endpoint, prepare_type))
-            thread.start()
+            global_thread_pool.submit(sync_default_files, comfy_endpoint, prepare_type)
+            # thread = threading.Thread(target=sync_default_files, args=(comfy_endpoint, prepare_type))
+            # thread.start()
             # result = sync_default_files()
             # logger.debug(f"sync result is :{result}")
             return web.Response(status=200, content_type='application/json', body=json.dumps({"result": True}))
@@ -1726,19 +1731,19 @@ if is_on_sagemaker:
                         rlt = False
             elif prepare_type == 'other':
                 sync_script = sync_item['sync_script']
-                logger.info(f"sync_script {sync_script}")
+                logger.info(f"sync_script {sync_script} sync_item: {sync_item}")
                 # sync_script.startswith('s5cmd') 不允许
                 try:
                     if sync_script and (
                             sync_script.startswith("cat") or sync_script.startswith("os.environ")
                             or sync_script.startswith("print") or sync_script.startswith("ls ")
                             or sync_script.startswith("du ")
-                            # or sync_script.startswith("python3 -m pip") or sync_script.startswith("python -m pip")
-                            # or sync_script.startswith("pip install") or sync_script.startswith("apt")
-                            # or sync_script.startswith("curl") or sync_script.startswith("wget")
-                            # or sync_script.startswith("env") or sync_script.startswith("source")
-                            # or sync_script.startswith("sudo chmod") or sync_script.startswith("chmod")
-                            # or sync_script.startswith("/home/ubuntu/ComfyUI/venv/bin/python")
+                            or sync_script.startswith("python3 -m pip") or sync_script.startswith("python -m pip")
+                            or sync_script.startswith("pip install") or sync_script.startswith("apt")
+                            or sync_script.startswith("curl") or sync_script.startswith("wget")
+                            or sync_script.startswith("env") or sync_script.startswith("source")
+                            or sync_script.startswith("sudo chmod") or sync_script.startswith("chmod")
+                            or sync_script.startswith("/home/ubuntu/ComfyUI/venv/bin/python")
                     ):
                         os.system(sync_script)
                     elif sync_script and (sync_script.startswith("export ") and len(sync_script.split(" ")) > 2):
