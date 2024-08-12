@@ -827,8 +827,14 @@ if is_on_ec2:
         logger.info(f"start to check_prepare {request}")
         try:
             json_data = await request.json()
-            workflow_name = os.getenv('WORKFLOW_NAME')
-            comfy_endpoint = get_endpoint_name_by_workflow_name(workflow_name)
+            comfy_endpoint = json_data['endpoint_name'] if json_data and 'endpoint_name' in json_data else None
+            if not comfy_endpoint:
+                workflow_name = json_data['workflow_name'] if json_data and 'workflow_name' in json_data else os.getenv(
+                    'WORKFLOW_NAME')
+                comfy_endpoint = get_endpoint_name_by_workflow_name(workflow_name)
+            logger.info(f"check_prepare endpoint_name is:{comfy_endpoint}")
+            # workflow_name = os.getenv('WORKFLOW_NAME')
+            # comfy_endpoint = get_endpoint_name_by_workflow_name(workflow_name)
             get_response = requests.get(f"{api_url}/prepare/{comfy_endpoint}", headers=headers)
             response = get_response.json()
             logger.info(f"check sync response is {response}")
@@ -928,8 +934,12 @@ if is_on_ec2:
         try:
             json_data = await request.json()
             prepare_type = json_data['prepare_type'] if json_data and 'prepare_type' in json_data else 'inputs'
-            workflow_name = json_data['workflow_name'] if json_data and 'workflow_name' in json_data else os.getenv('WORKFLOW_NAME')
-            comfy_endpoint = get_endpoint_name_by_workflow_name(workflow_name)
+            comfy_endpoint = json_data['endpoint_name'] if json_data and 'endpoint_name' in json_data else None
+            if not comfy_endpoint:
+                workflow_name = json_data['workflow_name'] if json_data and 'workflow_name' in json_data else os.getenv(
+                    'WORKFLOW_NAME')
+                comfy_endpoint = get_endpoint_name_by_workflow_name(workflow_name)
+            logger.info(f"sync_env endpoint_name is:{comfy_endpoint}")
             global_thread_pool.submit(sync_default_files, comfy_endpoint, prepare_type)
             # thread = threading.Thread(target=sync_default_files, args=(comfy_endpoint, prepare_type))
             # thread.start()
